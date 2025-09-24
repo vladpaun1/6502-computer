@@ -2,32 +2,31 @@
 A personal project building a 65c02 based 8-bit breadboard computer and coding a lightweight custom OS for it
 
 ## Shopping list
-### 1. Power and breadboarding
-- 5 V regulated power supply — USB → 5 V wall adapter (at least 1 A) is fine.
-- Breadboard power module (plugs into the rails, often accepts USB or barrel jack). Choose one that can output 5 V only (many cheap MB102 modules have 3.3 V as well).
-- Breadboards — get a few 830-point ones, plus maybe a larger “bus board” with long rails. For bigger builds, you’ll want 3–4 boards linked.
-- Jumper wire kit — solid-core, pre-cut is cleaner than floppy dupont wires for logic.
-- Male/female pin headers — to adapt things like Raspberry Pi GPIO or USB-serial adapters to the board.
+### Mouser Order  
+Total: €82,95  
+Items:
+- W65C02S6TPG-14 — 8-bit Microprocessor — €11,11
+- W65C22S6TPG-14 — I/O Controller Interface IC — €11,30  
+- AS6C62256-55PCN — SRAM 32Kx8 55ns — €4,44  
+- AT28C256-15PU — EEPROM 32Kx8 150ns — €9,99  
+- ECS-100AX-010 — Oscillator 1MHz DIP-14 — €2,30  
+- ECS-100AX-143 — Oscillator 14.31818MHz DIP-14 — €2,12  
+- SN74HC138N — 3-to-8 Decoder — €1,08  
+- SN74HC14N — Hex Schmitt-Trigger Inverter — €0,91  
+- SN74HC245N — Octal Bus Transceiver — €0,71  
+- SN74HC00N (x3) — Quad 2-Input NAND Gate — €1,83  
+- SN74HC595N (x2) — 8-bit Shift Register — €2,88  
+- SN74HC157N — Quad Data Selector/Multiplexer — €2,10  
+- MCP130-485HI/TO — Supervisory Circuit — €0,46  
+- BB830T (x2) — 830-Tie Point Transparent Breadboard — €18,10  
+- LCD 16x2 RGB — Display Module — €11,01  
+- K104K20X7RH5UH5 (x10) — 0.1µF MLCC Leaded Capacitors — €1,78  
+- 68024-116HLF — 1x16 Pin Header — €0,83  
 
-### 2. Clock generation
-The W65C02S is static, so you can run it from Hz → 14 MHz.
-- Fixed oscillator — e.g. a 14 MHz canned oscillator module (TTL square wave output).
-- Variable/slow clock module — e.g. a 555-timer kit, or a debounced pushbutton single-step circuit. Ben Eater sells a neat “step clock” board, but you can DIY with a Schmitt trigger + button.
-- Switching between the two: run a selector so you can swap between “slow debug” and “full speed.”
-
-### 3. Memory (RAM + ROM)
-The 6502 doesn’t have internal program memory, so you need external RAM and ROM.
-#### RAM:
-- Typical hobby choice: 32 KB SRAM (e.g. 62256, 55 ns access).
-- Faster parts exist (e.g. 15 ns), which you’ll want if running at 14 MHz (see timing below).
-#### ROM/EEPROM:
-- Common: 28C256 (32 KB parallel EEPROM). Easy to program with a cheap USB programmer (TL866II is the hobbyist standard).
-Why needed? Because RAM is volatile — when you power on, it’s empty. You need some non-volatile code (a “monitor” or “bootloader”) so the CPU doesn’t start executing garbage.
-Typical memory map: lower half = RAM, upper page(s) = ROM.
-### 4. I/O chips
-The 6502 doesn’t have built-in GPIO.
-- The classic companion is the W65C22 VIA (Versatile Interface Adapter):
-  - 2× 8-bit parallel I/O ports (configurable as input/output).
-  - Timers, shift register, interrupts.
-  - Acts as a “bridge” between CPU and real devices like LEDs, LCDs, keypads, or serial ports.
-Why not wire directly? Because peripherals often need latches, timers, or serial shifts — the VIA provides those functions. Driving an LCD directly would hog the CPU and complicate timing.
+### Amazon Order  
+Total: €125,36  
+Items:  
+- 840-Piece Breadboard Jumper Wire Set (14 lengths, with clips) - €11,99
+- TL866II Plus Universal Programmer (with 10 adapters) - €90,35
+- AC to DC 9V 2A Power Supply (EU plug, center positive) - €11,98
+- ELEGOO Electronic Fun Kit (breadboard, resistors, capacitors, LEDs, pots, etc.) - €11,04
