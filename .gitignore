@@ -1,0 +1,6 @@
+build/
+*.o
+*.bin
+*.hex
+__pycache__/
+.vscode/
