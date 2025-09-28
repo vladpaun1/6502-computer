@@ -1,4 +1,5 @@
 build/
+software/build
 *.o
 *.bin
 *.hex

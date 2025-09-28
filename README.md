@@ -30,3 +30,16 @@ Items:
 - TL866II Plus Universal Programmer (with 10 adapters) - €90,35
 - AC to DC 9V 2A Power Supply (EU plug, center positive) - €11,98
 - ELEGOO Electronic Fun Kit (breadboard, resistors, capacitors, LEDs, pots, etc.) - €11,04
+
+## Dependencies
+
+To build and flash ROMs for this project you’ll need:
+
+- **Python 3.12+**
+  - Used for helper scripts in the `tools/` directory.
+- **[minipro-git](https://aur.archlinux.org/packages/minipro-git)**
+  - Utility for programming EEPROMs/Flash devices with the TL866xx programmer.
+  - On Arch-based systems you can install it from the AUR:
+    ```bash
+    yay -S minipro-git
+    ```
