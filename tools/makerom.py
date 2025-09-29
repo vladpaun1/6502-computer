@@ -15,7 +15,6 @@ def write_vector(rom: bytearray, base_addr: int, vector_addr: int, target: int):
         raise ValueError(f"Vector {hex(vector_addr)} not inside ROM mapped at {hex(base_addr)}")
     rom[off]     = target & 0xFF        # low byte
     rom[off + 1] = (target >> 8) & 0xFF # high byte
-
 def main():
     p = argparse.ArgumentParser(description="Make a 32 KiB ROM for a 65C02 system using an AT28C256.")
     p.add_argument("-o", "--out", type=Path, default=Path("software/build/rom.bin"),
@@ -32,14 +31,40 @@ def main():
 
     # --- 1) Your program bytes (edit this list) ---
     code = bytearray([
-        # Example: count on the data bus, maybe shit shows up
-        0xA9, 0xFF,
-        0x8D, 0x03, 0x60,
-
-        0xA9, 0x55,
-        0x8D, 0x01, 0x60,
-
+        # Set VIA DDRA = $FF (all pins output)
+        0xA9, 0xFF,       # LDA #$FF
+        0x8D, 0x03, 0x60, # STA $6003   ; DDRA
+    
+        # loop_start:
+        0xA9, 0x55,       # LDA #$55
+        0x8D, 0x01, 0x60, # STA $6001   ; ORA = $55
+    
+        # delay A
+        0xA2, 0xFF,       # LDX #$FF    ; outer count (bump up for longer delay)
+        # delay_outer_A:
+        0xA0, 0xFF,       # LDY #$FF
+        # delay_inner_A:
+        0x88,             # DEY
+        0xD0, 0xFD,       # BNE delay_inner_A   (-3 from next PC)
+        0xCA,             # DEX
+        0xD0, 0xF8,       # BNE delay_outer_A   (-8 from next PC)
+    
+        0xA9, 0xAA,       # LDA #$AA
+        0x8D, 0x01, 0x60, # STA $6001   ; ORA = $AA
+    
+        # delay B (same as A)
+        0xA2, 0xFF,       # LDX #$FF
+        # delay_outer_B:
+        0xA0, 0xFF,       # LDY #$FF
+        # delay_inner_B:
+        0x88,             # DEY
+        0xD0, 0xFD,       # BNE delay_inner_B
+        0xCA,             # DEX
+        0xD0, 0xF8,       # BNE delay_outer_B
+    
+        0x4C, 0x05, 0x80, # JMP $8005   ; back to after DDRA write
     ])
+    
     # ----------------------------------------------
 
     # Build ROM: program at start of image; remainder filled with NOP
