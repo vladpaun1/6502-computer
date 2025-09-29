@@ -34,9 +34,10 @@ def main():
         # Set VIA DDRA = $FF (all pins output)
         0xA9, 0xFF,       # LDA #$FF
         0x8D, 0x03, 0x60, # STA $6003   ; DDRA
-    
+
+        
+        0xA9, 0x00,       # LDA #$55
         # loop_start:
-        0xA9, 0x55,       # LDA #$55
         0x8D, 0x01, 0x60, # STA $6001   ; ORA = $55
     
         # delay A
@@ -48,21 +49,11 @@ def main():
         0xD0, 0xFD,       # BNE delay_inner_A   (-3 from next PC)
         0xCA,             # DEX
         0xD0, 0xF8,       # BNE delay_outer_A   (-8 from next PC)
-    
-        0xA9, 0xAA,       # LDA #$AA
-        0x8D, 0x01, 0x60, # STA $6001   ; ORA = $AA
-    
-        # delay B (same as A)
-        0xA2, 0xFF,       # LDX #$FF
-        # delay_outer_B:
-        0xA0, 0xFF,       # LDY #$FF
-        # delay_inner_B:
-        0x88,             # DEY
-        0xD0, 0xFD,       # BNE delay_inner_B
-        0xCA,             # DEX
-        0xD0, 0xF8,       # BNE delay_outer_B
-    
-        0x4C, 0x05, 0x80, # JMP $8005   ; back to after DDRA write
+
+        0x18,             # CLC
+        0x69, 0x01,       # ADC 1
+        
+        0x4C, 0x07, 0x80, # JMP $8007   ; back to after DDRA write
     ])
     
     # ----------------------------------------------
