@@ -3,7 +3,6 @@ A personal project building a 65c02 based 8-bit breadboard computer and coding a
 
 ## Shopping list
 ### Mouser Order  
-Total: €82,95  
 Items:
 - W65C02S6TPG-14 — 8-bit Microprocessor — €11,11
 - W65C22S6TPG-14 — I/O Controller Interface IC — €11,30  
@@ -24,22 +23,32 @@ Items:
 - 68024-116HLF — 1x16 Pin Header — €0,83  
 
 ### Amazon Order  
-Total: €125,36  
 Items:  
-- 840-Piece Breadboard Jumper Wire Set (14 lengths, with clips) - €11,99
-- TL866II Plus Universal Programmer (with 10 adapters) - €90,35
-- AC to DC 9V 2A Power Supply (EU plug, center positive) - €11,98
-- ELEGOO Electronic Fun Kit (breadboard, resistors, capacitors, LEDs, pots, etc.) - €11,04
+- 840-Piece Breadboard Jumper Wire Set (14 lengths, with clips)  
+- TL866II Plus Universal Programmer (with 10 adapters)  
+- AC to DC 9V 2A Power Supply (EU plug, center positive)  
+- ELEGOO Electronic Fun Kit (breadboard, resistors, capacitors, LEDs, pots, etc.)  
 
 ## Dependencies
 
 To build and flash ROMs for this project you’ll need:
 
-- **Python 3.12+**
-  - Used for helper scripts in the `tools/` directory.
-- **[minipro-git](https://aur.archlinux.org/packages/minipro-git)**
-  - Utility for programming EEPROMs/Flash devices with the TL866xx programmer.
-  - On Arch-based systems you can install it from the AUR:
-    ```bash
-    yay -S minipro-git
-    ```
+- **Python 3.12+**  
+  Used for helper scripts in the `tools/` directory.
+
+- **[minipro-git](https://aur.archlinux.org/packages/minipro-git)**  
+  Utility for programming EEPROMs/Flash devices with the TL866xx programmer.  
+  On Arch-based systems you can install it from the AUR:  
+  ```bash
+  yay -S minipro-git
+  ```
+- **[ACME Cross Assembler](https://sourceforge.net/projects/acme-crossass/)**
+  A 6502/65C02 assembler used to build flat binary ROM images.
+  On Arch Linux it’s available in the official repos:
+  ```bash
+  sudo pacman -S acme
+  ```
+  Example usage:
+  ```bash
+  acme -f plain -o software/build/rom.bin software/src/main.asm
+  ```
