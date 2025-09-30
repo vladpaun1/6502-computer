@@ -42,8 +42,8 @@ To build and flash ROMs for this project you’ll need:
   ```bash
   yay -S minipro-git
   ```
-- **[ACME Cross Assembler](https://sourceforge.net/projects/acme-crossass/)**
-  A 6502/65C02 assembler used to build flat binary ROM images.
+- **[ACME Cross Assembler](https://sourceforge.net/projects/acme-crossass/)**  
+  A 6502/65C02 assembler used to build flat binary ROM images.  
   On Arch Linux it’s available in the official repos:
   ```bash
   sudo pacman -S acme
