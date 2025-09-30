@@ -52,3 +52,9 @@ To build and flash ROMs for this project you’ll need:
   ```bash
   acme -f plain -o software/build/rom.bin software/src/main.asm
   ```
+- **Hardware CAD (KiCad)**
+  We use **KiCad 8** for schematics and PCB layout.  
+  Install on Arch
+  ```bash
+  sudo pacman -S kicad kicad-symbols kicad-footprints kicad-packages3d kicad-templates
+  ```
