@@ -1,4 +1,6 @@
-!to "software/build/oscilate.bin", plain
+!to "software/build/count.bin", plain
+!cpu 65c02
+
 
 * = $8000           ; Set PC to beginning of EEPROM
 
@@ -9,29 +11,23 @@ reset:
     lda #$FF
     sta DDRA        ; Set data direction of Port A to output
 
+    lda #$00        ; Load A with 0
+
 loop:
-    lda #$55        ; Load A with 55
     sta PORTA       ; Store A on the VIA
 
-    jsr wait_loop
-
-    lda #$AA        ; Load A with aa
-    sta PORTA       ; Store A on the VIA
-
-    jsr wait_loop
-
-    jmp loop        ; loop
-
-
-wait_loop:          ; Wait 256 * 256 operations
+                    ; Wait 256 * 256 operations
     ldx #$FF        ; Outer Count
 -   ldy #$FF        ; Inner count
 --  dey             ; Decrement inner
     bne --          ; if not 0, keep decrementing
     dex             ; decrement x
     bne -           ; if x not zero, reset y and go again
-    rts
 
+    clc             ; clear carry bit
+    adc #$01        ; increment A
+
+    jmp loop        ; loop
 
 nmi: rti
 irq: rti
