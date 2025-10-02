@@ -1,0 +1,20 @@
+# KiCad generated / local
+**/*-backups/
+**/fp-info-cache
+**/*.kicad_prl
+**/*.bak
+**/*~
+**/*.tmp
+
+# Legacy cache libs (older KiCad flows)
+**/*-cache.lib
+**/*-cache.dcm
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+
+# (optional) ignore exports if you generate plots/gerbers locally
+# drawings/*
+# **/plot-*/ 
+# **/gerbers/

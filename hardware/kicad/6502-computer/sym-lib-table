@@ -1,0 +1,4 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "6502-computer")(type "KiCad")(uri "/home/vlad/code/personal/6502-computer/hardware/kicad/symbols/6502-computer.kicad_sym")(options "")(descr ""))
+)
