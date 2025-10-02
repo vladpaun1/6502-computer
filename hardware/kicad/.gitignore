@@ -6,6 +6,9 @@
 **/*~
 **/*.tmp
 
+# KiCad lock/session files
+**/*.lck
+
 # Legacy cache libs (older KiCad flows)
 **/*-cache.lib
 **/*-cache.dcm
