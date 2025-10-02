@@ -5,6 +5,7 @@
 **/*.bak
 **/*~
 **/*.tmp
+**/#auto_saved_files#
 
 # KiCad lock/session files
 **/*.lck
