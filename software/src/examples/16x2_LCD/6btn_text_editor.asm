@@ -1,8 +1,14 @@
 !to "software/build/6btn_text_editor.bin", plain
 !cpu 65c02
 
+; =============================================================================
+; 6btn_text_editor — VIA+HD44780 editor with modes & insert dial
+; =============================================================================
 * = $8000
 
+; -----------------------------------------------------------------------------
+; VIA addresses
+; -----------------------------------------------------------------------------
 !addr PORTB   = $6000
 !addr PORTA   = $6001
 !addr DDRB    = $6002
@@ -11,212 +17,118 @@
 !addr IFR     = $600d
 !addr IER     = $600e
 
-; Port A mapping:
-;   PA7 = RW, PA6 = RS, PA5..PA0 = inputs (buttons)
+; -----------------------------------------------------------------------------
+; Port A mapping: PA7=RW, PA6=RS, PA5..PA0 = buttons
+; -----------------------------------------------------------------------------
 RW = %10000000                  ; PA7
 RS = %01000000                  ; PA6
 
-; PCR control (only bits 7..5 affect CB2). We'll RMW to preserve other bits.
+; PCR/CB2 control (only bits 7..5 affect CB2). RMW to preserve other bits.
 CB2_HIGH_BITS = %11100000       ; CB2 = High output
 CB2_LOW_BITS  = %11000000       ; CB2 = Low output
 PRESERVE_MASK = %00011111       ; keep bits 4..0
 
-text_ptr = $00
+; -----------------------------------------------------------------------------
+; Zero-page working pointers/temps
+; -----------------------------------------------------------------------------
+text_ptr          = $00         ; 16-bit pointer for message printing
+jmp_ptr           = $02         ; 16-bit pointer for indirect JMP
+tmp               = $04
+tmp_ddrb          = $05
+reset_insert_type = $06         ; flag: 1 when entering INSERT mode
 
-; ---- modes ----
-MODE_ADDRESS= $0200
-NUM_MODES   = 3          ; change to any N
+; -----------------------------------------------------------------------------
+; RAM state
+; -----------------------------------------------------------------------------
+MODE_ADDRESS            = $0200  ; current mode (0..NUM_MODES-1)
+INSERT_TYPE_ADDRESS     = $0201  ; current insert type (0..NUM_INSERT_TYPES-1)
+LAST_CURSOR_POS         = $0202  ; last DDRAM addr read (7-bit addr)
+CURRENT_INSERT          = $0203  ; current glyph to insert/edit
+CURRENT_SPECIAL_INDEX   = $0204  ; index into special_table
 
+; -----------------------------------------------------------------------------
+; Modes
+; -----------------------------------------------------------------------------
+NUM_MODES   = 3
 MODE_CURSOR = 0
 MODE_TEXT   = 1
 MODE_INSERT = 2
 
-jmp_ptr     = $02        ; extra ZP pointer for indirect JMP
-
 mode_texts:
     !word mode1_text, mode2_text, mode3_text
-
-
 mode1_text:   !text "c",0
 mode2_text:   !text "t",0
 mode3_text:   !text "i:",0
 
-
-; ---- insert types ----
-INSERT_TYPE_ADDRESS = $0201
-NUM_INSERT_TYPES = 3
-
-INSERT_TYPE_CHAR    = 0
-INSERT_TYPE_NUM     = 1
-INSERT_TYPE_SPECIAL = 2
+; -----------------------------------------------------------------------------
+; Insert types
+; -----------------------------------------------------------------------------
+NUM_INSERT_TYPES     = 3
+INSERT_TYPE_CHAR     = 0
+INSERT_TYPE_NUM      = 1
+INSERT_TYPE_SPECIAL  = 2
 
 insert_type_default_texts:
     !word insert_type1_default, insert_type2_default, insert_type3_default
-
 insert_type1_default:    !text "<char>:",0
 insert_type2_default:    !text "<num>:",0
 insert_type3_default:    !text "<special>:",0
 
+; Special glyph set (wraps)
+SPECIAL_COUNT = 24
+special_table:
+    !byte '.',',','-','_','?','!',';',':','+','/','\\','*','(',')','[',']','{','}','<','>','=','@','#','&'
 
+; -----------------------------------------------------------------------------
+; UI strings
+; -----------------------------------------------------------------------------
 msg:    !text "Hello, world!",0
 left:   !text "left",0
 up:     !text "up",0
 down:   !text "down",0
-right:   !text "right",0
+right:  !text "right",0
 enter:  !text "enter",0
 
+; =============================================================================
+; Reset / Init
+; =============================================================================
 reset:
     ldx #$FF
     txs
 
     jsr initialize_lcd
-    jsr init_irq_for_ca1        ; enable CA1 IRQ (falling edge)
-    cli                         ; allow maskable interrupts
-    
+    jsr init_irq_for_ca1
+    cli                         ; enable IRQs
+
+    ; Greeting on power-up
     lda #<msg
     sta text_ptr
     lda #>msg
     sta text_ptr + 1
     jsr print_msg
 
+    jsr lcd_get_addr    ; save cursor
+    sta LAST_CURSOR_POS
+
+
+    ; Initial editor state
     lda #MODE_CURSOR
     sta MODE_ADDRESS
 
     lda #INSERT_TYPE_CHAR
     sta INSERT_TYPE_ADDRESS
 
-    jsr show_current_mode_on_line2
+    lda #'a'
+    sta CURRENT_INSERT
 
+    jsr show_current_mode_on_line2
 
 loop:
     jmp loop
 
-
-
-print_msg:
-    ldy #0
-print_loop:
-    lda (text_ptr),y
-    beq +
-    jsr print_char
-    inc text_ptr
-    bne print_loop
-    inc text_ptr+1
-    jmp print_loop
-+   rts
-; ---------------- LCD HELPERS (E on CB2 via PCR), busy-flag polling ----------------
-
-; Pulse E on CB2: HIGH then LOW (RMW to preserve CA1/CA2/CB1 bits)
-lcd_strobe:
-    pha
-    lda PCR
-    and #PRESERVE_MASK
-    ora #CB2_HIGH_BITS
-    sta PCR
-    lda PCR
-    and #PRESERVE_MASK
-    ora #CB2_LOW_BITS
-    sta PCR
-    pla
-    rts
-
-; Write data byte in A (RS=1, RW=0)
-print_char:
-    jsr lcd_wait          ; wait until not busy
-
-    pha
-
-    sta PORTB             ; put data on D0..D7
-    lda #RS               ; RS=1, RW=0
-    sta PORTA
-    jsr lcd_strobe        ; E pulse on CB2
-    pla
-    rts
-
-; Write instruction byte in A (RS=0, RW=0)
-lcd_instruction:
-    jsr lcd_wait
-    sta PORTB
-    lda #$00              ; RS=0, RW=0
-    sta PORTA
-    jsr lcd_strobe
-    rts
-
-; VIA + LCD init
-initialize_lcd:
-    lda #%11111111
-    sta DDRB              ; PB = outputs (LCD data)
-    lda #%11000000
-    sta DDRA              ; PA7..PA6 outputs (RW,RS), PA5..PA0 inputs
-
-    ; Force E (CB2) low idle
-    lda PCR
-    and #PRESERVE_MASK
-    ora #CB2_LOW_BITS
-    sta PCR
-
-    ; Function set: 8-bit, 2 lines, 5x8
-    lda #%00111000
-    jsr lcd_instruction
-    ; Display ON, cursor ON, blink OFF
-    lda #%00001110
-    jsr lcd_instruction
-    ; Entry mode: increment, no shift
-    lda #%00000110
-    jsr lcd_instruction
-    ; Clear display
-    lda #%00000001
-    jsr lcd_instruction
-    rts
-
-; Busy-flag poll (no fixed delays). Reads DB7 while E is HIGH.
-lcd_wait:
-    pha
-    lda #%00000000
-    sta DDRB              ; PB = inputs for read
-
-@busy:
-    lda #RW               ; RS=0, RW=1  (since only RW bit set)
-    sta PORTA
-
-    ; E = HIGH
-    lda PCR
-    and #PRESERVE_MASK
-    ora #CB2_HIGH_BITS
-    sta PCR
-
-    lda PORTB             ; read DB7..DB0 while E high
-    pha                   ; save read in stack
-
-    ; E = LOW
-    lda PCR
-    and #PRESERVE_MASK
-    ora #CB2_LOW_BITS
-    sta PCR
-
-    pla
-    and #%10000000        ; test busy flag (DB7)
-    bne @busy             ; if busy, loop
-
-    lda #%11111111
-    sta DDRB              ; PB back to outputs
-    pla
-    rts
-
-init_irq_for_ca1:
-    ; Set CA1 to trigger on falling edge (PCR bit0 = 0)
-    lda PCR
-    and #%11111110
-    sta PCR
-
-    ; Clear any pending CA1 by reading IRA
-    lda PORTA
-
-    ; Enable CA1 interrupt (IER: bit1, with bit7=1 to enable)
-    lda #%10000010
-    sta IER
-    rts
-
+; =============================================================================
+; IRQ (CA1 on falling edge, buttons on PA5..PA0 active-low)
+; =============================================================================
 irq:
     pha
     phx
@@ -224,12 +136,16 @@ irq:
 
     lda IFR
     and #%00000010
-    beq irq_done
+    beq irq_done                 ; not a CA1 IRQ
+
+    ; Latch cursor and clear CA1 flag by reading IRA
+    jsr lcd_get_addr
+    sta LAST_CURSOR_POS
 
     lda PORTA
-    and #%00111111
+    and #%00111111               ; keep PA5..PA0
 
-    bit #%00000001      ; PA0 = mode toggle
+    bit #%00000001               ; PA0 = mode toggle
     beq irq_mode
     bit #%00000010
     beq irq_left
@@ -243,11 +159,7 @@ irq:
     beq irq_enter
     jmp irq_done
 
-irq_mode:
-    jsr toggle_modes
-    jmp irq_done
-
-; --- dispatches (jump through handler tables based on mode) ---
+irq_mode:   jsr toggle_modes     : jmp irq_done
 irq_left:   jmp dispatch_left
 irq_up:     jmp dispatch_up
 irq_down:   jmp dispatch_down
@@ -260,10 +172,18 @@ irq_done:
     pla
     rti
 
+; =============================================================================
+; Cursor helpers
+; =============================================================================
+reset_cursor:
+    lda LAST_CURSOR_POS
+    ora #%10000000               ; Set DDRAM addr command
+    jsr lcd_instruction
+    rts
 
-
-
-; --------- LEFT handlers ----------
+; =============================================================================
+; LEFT handlers
+; =============================================================================
 left_handlers:
     !word left_m0, left_m1, left_m2
 
@@ -275,27 +195,28 @@ dispatch_left:
     sta jmp_ptr+1
     jmp (jmp_ptr)
 
-; Mode 0 (cursor mode): move cursor left (HD44780: 0001 0000)
-left_m0:
+left_m0:                         ; cursor left
     lda #%00010000
     jsr lcd_instruction
     jmp irq_done
 
-; Mode 1 (text mode): just say "left" on line 2
-left_m1:
+left_m1:                         ; text mode: say "left"
     lda #<left
     sta text_ptr
     lda #>left
     sta text_ptr+1
     jsr print_on_line1
+    jsr reset_cursor
     jmp irq_done
 
-left_m2:
+left_m2:                         ; insert: prev type
     jsr dec_insert_type
+    jsr reset_cursor
     jmp irq_done
 
-
-; --------- RIGHT handlers ----------
+; =============================================================================
+; RIGHT handlers
+; =============================================================================
 right_handlers:
     !word right_m0, right_m1, right_m2
 
@@ -307,25 +228,28 @@ dispatch_right:
     sta jmp_ptr+1
     jmp (jmp_ptr)
 
-right_m0:                   ; cursor mode: cursor right (0001 0100)
+right_m0:                        ; cursor right
     lda #%00010100
     jsr lcd_instruction
     jmp irq_done
 
-right_m1:                   ; text mode: say "right"
+right_m1:                        ; text mode: say "right"
     lda #<right
     sta text_ptr
     lda #>right
     sta text_ptr+1
     jsr print_on_line1
+    jsr reset_cursor
     jmp irq_done
 
-right_m2:
+right_m2:                        ; insert: next type
     jsr inc_insert_type
+    jsr reset_cursor
     jmp irq_done
 
-
-; --------- UP handlers ----------
+; =============================================================================
+; UP handlers
+; =============================================================================
 up_handlers:
     !word up_m0, up_m1, up_m2
 
@@ -337,11 +261,14 @@ dispatch_up:
     sta jmp_ptr+1
     jmp (jmp_ptr)
 
-up_m0:                              ; cursor mode: go to line 1, same column 
-    jsr lcd_get_addr
-    and #%00001111
-    ora #%10000000                  ; Set DDRAM to line 1, col 0
-    jsr lcd_instruction
+up_m0:
+    ; go to start of line
+    jsr lcd_line1_home
+
+    ;jsr lcd_get_addr ; go to line 1, same col
+    ;and #%00001111
+    ;ora #%10000000
+    ;jsr lcd_instruction
     jmp irq_done
 
 up_m1:
@@ -350,13 +277,17 @@ up_m1:
     lda #>up
     sta text_ptr+1
     jsr print_on_line1
+    jsr reset_cursor
     jmp irq_done
 
-up_m2:
+up_m2:                           ; insert: decrement glyph
+    jsr dispatch_insert_dec
+    jsr show_insert_type_on_line2
     jmp irq_done
 
-
-; --------- DOWN handlers ----------
+; =============================================================================
+; DOWN handlers
+; =============================================================================
 down_handlers:
     !word down_m0, down_m1, down_m2
 
@@ -368,11 +299,15 @@ dispatch_down:
     sta jmp_ptr+1
     jmp (jmp_ptr)
 
-down_m0:                    ; cursor mode: line 2, same col
-    jsr lcd_get_addr
-    and #%00001111
-    ora #%11000000
+down_m0:     
+    ; go to end of line 1
+    lda #%10001111
     jsr lcd_instruction
+
+    ;jsr lcd_get_addr ; go to line 2, same col
+    ;and #%00001111
+    ;ora #%11000000
+    ;jsr lcd_instruction
     jmp irq_done
 
 down_m1:
@@ -381,14 +316,17 @@ down_m1:
     lda #>down
     sta text_ptr+1
     jsr print_on_line1
+    jsr reset_cursor
     jmp irq_done
 
-down_m2:
-    lda 'a'
-    jsr print_char
+down_m2:                         ; insert: increment glyph
+    jsr dispatch_insert_inc
+    jsr show_insert_type_on_line2
     jmp irq_done
 
-; --------- ENTER handlers ----------
+; =============================================================================
+; ENTER handlers
+; =============================================================================
 enter_handlers:
     !word enter_m0, enter_m1, enter_m2
 
@@ -400,12 +338,11 @@ dispatch_enter:
     sta jmp_ptr+1
     jmp (jmp_ptr)
 
-enter_m0:                   ; cursor mode: backspace
+enter_m0:                        ; backspace shift
     jsr lcd_backspace_shift
-
     jmp irq_done
 
-enter_m1:                   ; text mode: say "enter"
+enter_m1:                        ; say "enter"
     lda #<enter
     sta text_ptr
     lda #>enter
@@ -413,18 +350,24 @@ enter_m1:                   ; text mode: say "enter"
     jsr print_on_line1
     jmp irq_done
 
-enter_m2:
+enter_m2:                        ; insert at cursor (advance)
+    jsr reset_cursor
+    lda CURRENT_INSERT
+    jsr print_char
     jmp irq_done
 
-
-
+; =============================================================================
+; Insert type change
+; =============================================================================
 inc_insert_type:
     inc INSERT_TYPE_ADDRESS
     lda INSERT_TYPE_ADDRESS
     cmp #NUM_INSERT_TYPES
     bcc +
     stz INSERT_TYPE_ADDRESS
-+   jsr show_insert_type_on_line2
++   
+    jsr set_default_insert_for_type
+    jsr show_insert_type_on_line2
     rts
 
 dec_insert_type:
@@ -434,9 +377,14 @@ dec_insert_type:
     bne +
     lda #NUM_INSERT_TYPES - 1
     sta INSERT_TYPE_ADDRESS
-+   jsr show_insert_type_on_line2
++   
+    jsr set_default_insert_for_type
+    jsr show_insert_type_on_line2
     rts
 
+; =============================================================================
+; Mode toggle
+; =============================================================================
 toggle_modes:
     inc MODE_ADDRESS
     lda MODE_ADDRESS
@@ -446,6 +394,9 @@ toggle_modes:
 +   jsr show_current_mode_on_line2
     rts
 
+; =============================================================================
+; UI line helpers
+; =============================================================================
 lcd_line1_home:
     lda #%10000000
     jsr lcd_instruction
@@ -489,16 +440,341 @@ append_on_line_2:
     jsr print_msg
     rts
 
+; =============================================================================
+; Mode/Insert label rendering
+; =============================================================================
+; X = mode * 2
+mode_x2:
+    ldx MODE_ADDRESS
+    txa
+    asl
+    tax
+    rts
+
+; X = insert_type * 2
+insert_type_x2:
+    ldx INSERT_TYPE_ADDRESS
+    txa
+    asl
+    tax
+    rts
+
+show_insert_type_on_line2:
+    stz reset_insert_type
+    jmp show_mode_and_maybe_insert
+
+show_current_mode_on_line2:
+    lda #1
+    sta reset_insert_type
+show_mode_and_maybe_insert:
+    jsr mode_x2
+    lda mode_texts, x
+    sta text_ptr
+    lda mode_texts+1, X
+    sta text_ptr+1
+    jsr print_on_line2
+
+    lda MODE_ADDRESS
+    cmp #MODE_INSERT
+    bne @done
+
+    ; entering INSERT? optionally reset type to 0 then set default glyph
+    lda reset_insert_type
+    beq @skip_reset
+    stz INSERT_TYPE_ADDRESS
+    jsr set_default_insert_for_type
+@skip_reset:
+    jsr append_insert_type_on_line2
+    jsr append_current_insert_on_line2
+@done:
+    jsr reset_cursor
+    rts
+
+append_insert_type_on_line2:
+    jsr insert_type_x2
+    lda insert_type_default_texts, x
+    sta text_ptr
+    lda insert_type_default_texts+1, X
+    sta text_ptr+1
+    jsr append_on_line_2
+    rts
+
+; =============================================================================
+; INSERT glyph seed & write
+; =============================================================================
+; Set CURRENT_INSERT (and special index) to first glyph for current type
+set_default_insert_for_type:
+    lda INSERT_TYPE_ADDRESS
+    cmp #INSERT_TYPE_CHAR
+    bne @chk_num
+    lda #'a'
+    sta CURRENT_INSERT
+    rts
+@chk_num:
+    cmp #INSERT_TYPE_NUM
+    bne @chk_special
+    lda #'0'
+    sta CURRENT_INSERT
+    rts
+@chk_special:
+    stz CURRENT_SPECIAL_INDEX
+    ldy CURRENT_SPECIAL_INDEX
+    lda special_table,y
+    sta CURRENT_INSERT
+    rts
+
+
+append_current_insert_on_line2:
+    lda CURRENT_INSERT
+    jsr print_char
+    rts
+
+
+; =============================================================================
+; INSERT increment/decrement dispatchers
+; =============================================================================
+dispatch_insert_inc:
+    jsr insert_type_x2
+    lda insert_inc_handlers, X
+    sta jmp_ptr
+    lda insert_inc_handlers+1, X
+    sta jmp_ptr+1
+    jmp (jmp_ptr)
+
+dispatch_insert_dec:
+    jsr insert_type_x2
+    lda insert_dec_handlers, X
+    sta jmp_ptr
+    lda insert_dec_handlers+1, X
+    sta jmp_ptr+1
+    jmp (jmp_ptr)
+
+; Tables
+insert_inc_handlers:
+    !word insert_char_inc, insert_num_inc, insert_special_inc
+insert_dec_handlers:
+    !word insert_char_dec, insert_num_dec, insert_special_dec
+
+; ---- CHAR: 'a'..'z' wrap ----
+insert_char_inc:
+    lda CURRENT_INSERT
+    cmp #'a'
+    bcc @set_a
+    cmp #'z'
+    beq @wrap_a
+    bcs @set_a
+    clc
+    adc #1
+    bne @store_char
+@wrap_a:
+    lda #'a'
+@set_a:
+@store_char:
+    sta CURRENT_INSERT
+    rts
+
+insert_char_dec:
+    lda CURRENT_INSERT
+    cmp #'a'
+    beq @wrap_z
+    cmp #'z'
+    bcc @ok_dec
+    beq @ok_dec
+    lda #'z'
+    bne @store_dec
+@ok_dec:
+    sec
+    sbc #1
+    bcs @store_dec
+@wrap_z:
+    lda #'z'
+@store_dec:
+    sta CURRENT_INSERT
+    rts
+
+; ---- NUM: '0'..'9' wrap ----
+insert_num_inc:
+    lda CURRENT_INSERT
+    cmp #'0'
+    bcc @set_0
+    cmp #'9'
+    beq @wrap_0
+    bcs @set_0
+    clc
+    adc #1
+    bne @store_num
+@wrap_0:
+    lda #'0'
+@set_0:
+@store_num:
+    sta CURRENT_INSERT
+    rts
+
+insert_num_dec:
+    lda CURRENT_INSERT
+    cmp #'0'
+    beq @wrap_9
+    cmp #'9'
+    bcc @ok_dec
+    beq @ok_dec
+    lda #'9'
+    bne @store_dec
+@ok_dec:
+    sec
+    sbc #1
+    bcs @store_dec
+@wrap_9:
+    lda #'9'
+@store_dec:
+    sta CURRENT_INSERT
+    rts
+
+; ---- SPECIAL: table wrap using CURRENT_SPECIAL_INDEX ----
+insert_special_inc:
+    lda CURRENT_SPECIAL_INDEX
+    clc
+    adc #1
+    cmp #SPECIAL_COUNT
+    bcc @idx_ok
+    lda #0
+@idx_ok:
+    sta CURRENT_SPECIAL_INDEX
+    tay
+    lda special_table,y
+    sta CURRENT_INSERT
+    rts
+
+insert_special_dec:
+    lda CURRENT_SPECIAL_INDEX
+    beq @wrap_last
+    sec
+    sbc #1
+    bne @idx_set
+@wrap_last:
+    lda #SPECIAL_COUNT-1
+@idx_set:
+    sta CURRENT_SPECIAL_INDEX
+    tay
+    lda special_table,y
+    sta CURRENT_INSERT
+    rts
+
+; =============================================================================
+; LCD helpers (busy-flag polling, data/instruction writes)
+; =============================================================================
+print_msg:
+    ldy #0
+@loop:
+    lda (text_ptr),y
+    beq @done
+    jsr print_char
+    inc text_ptr
+    bne @loop
+    inc text_ptr+1
+    jmp @loop
+@done:
+    rts
+
+; Pulse E on CB2: HIGH then LOW (RMW preserve)
+lcd_strobe:
+    pha
+    lda PCR
+    and #PRESERVE_MASK
+    ora #CB2_HIGH_BITS
+    sta PCR
+    lda PCR
+    and #PRESERVE_MASK
+    ora #CB2_LOW_BITS
+    sta PCR
+    pla
+    rts
+
+; RS=1, RW=0
+print_char:
+    jsr lcd_wait
+    pha
+    sta PORTB
+    lda #RS
+    sta PORTA
+    jsr lcd_strobe
+    pla
+    rts
+
+; RS=0, RW=0
+lcd_instruction:
+    jsr lcd_wait
+    sta PORTB
+    lda #$00
+    sta PORTA
+    jsr lcd_strobe
+    rts
+
+; VIA + LCD init
+initialize_lcd:
+    lda #%11111111
+    sta DDRB                      ; PB outputs
+    lda #%11000000
+    sta DDRA                      ; PA7..PA6 outputs, PA5..PA0 inputs
+
+    ; Force E (CB2) low idle
+    lda PCR
+    and #PRESERVE_MASK
+    ora #CB2_LOW_BITS
+    sta PCR
+
+    ; Function set: 8-bit, 2 lines, 5x8
+    lda #%00111000
+    jsr lcd_instruction
+    ; Display ON, cursor ON, blink OFF
+    lda #%00001110
+    jsr lcd_instruction
+    ; Entry mode: increment, no shift
+    lda #%00000110
+    jsr lcd_instruction
+    ; Clear display
+    lda #%00000001
+    jsr lcd_instruction
+    rts
+
+; Busy-flag poll (read DB7 while E is HIGH)
+lcd_wait:
+    pha
+    lda #%00000000
+    sta DDRB                      ; PB inputs
+@busy:
+    lda #RW                       ; RS=0, RW=1
+    sta PORTA
+    ; E HIGH
+    lda PCR
+    and #PRESERVE_MASK
+    ora #CB2_HIGH_BITS
+    sta PCR
+    lda PORTB
+    pha
+    ; E LOW
+    lda PCR
+    and #PRESERVE_MASK
+    ora #CB2_LOW_BITS
+    sta PCR
+    pla
+    and #%10000000                ; DB7 busy?
+    bne @busy
+    lda #%11111111
+    sta DDRB                      ; PB outputs
+    pla
+    rts
+
+; Read current DDRAM addr (7-bit), returns in A
 lcd_get_addr:
     lda DDRB
     pha
-
     lda #%00000000
     sta DDRB
 
     lda #RW
     sta PORTA
 
+    ; E HIGH
     lda PCR
     and #PRESERVE_MASK
     ora #CB2_HIGH_BITS
@@ -508,6 +784,7 @@ lcd_get_addr:
     and #%01111111
     tax
 
+    ; E LOW
     lda PCR
     and #PRESERVE_MASK
     ora #CB2_LOW_BITS
@@ -518,26 +795,25 @@ lcd_get_addr:
     txa
     rts
 
-tmp_ddrb = $05
+; Read data at current addr into A (no advance here)
 lcd_read_data:
     jsr lcd_wait
     lda DDRB
     sta tmp_ddrb
-
     lda #$00
     sta DDRB
 
-    lda #(RW | RS)
+    lda #(RW | RS)                ; RS=1,RW=1
     sta PORTA
 
+    ; E HIGH
     lda PCR
     and #PRESERVE_MASK
     ora #CB2_HIGH_BITS
     sta PCR
-
     lda PORTB
     pha
-
+    ; E LOW
     lda PCR
     and #PRESERVE_MASK
     ora #CB2_LOW_BITS
@@ -549,7 +825,7 @@ lcd_read_data:
     pla
     rts
 
-tmp = $04
+; Backspace with shift (line-local)
 lcd_backspace_shift:
     jsr lcd_get_addr
     tax
@@ -557,7 +833,7 @@ lcd_backspace_shift:
 
     txa
     and #%01000000
-    sta tmp
+    sta tmp                      ; line bit (0x40)
 
     tya
     and #%00001111
@@ -612,57 +888,26 @@ fill_last:
 finish_backspace:
     rts
 
+; =============================================================================
+; VIA: CA1 IRQ setup
+; =============================================================================
+init_irq_for_ca1:
+    ; CA1 falling edge (PCR bit0 = 0)
+    lda PCR
+    and #%11111110
+    sta PCR
 
-; X = mode * 2
-mode_x2:
-    ldx MODE_ADDRESS
-    txa
-    asl
-    tax
+    ; Clear any pending CA1 by reading IRA
+    lda PORTA
+
+    ; Enable CA1 interrupt (IER: bit1), write 1s with bit7=1 to enable
+    lda #%10000010
+    sta IER
     rts
 
-insert_type_x2:
-    ldx INSERT_TYPE_ADDRESS
-    txa 
-    asl
-    tax
-    rts
-
-reset_insert_type = $06
-
-show_insert_type_on_line2:
-    stz reset_insert_type
-    jmp ++
-show_current_mode_on_line2:
-    lda #1
-    sta reset_insert_type
-
-++  jsr mode_x2
-    lda mode_texts, x
-    sta text_ptr
-    lda mode_texts+1, X
-    sta text_ptr+1
-    jsr print_on_line2
-
-    lda MODE_ADDRESS
-    cmp #MODE_INSERT
-    bne +
-    lda reset_insert_type
-    beq +++
-    stz INSERT_TYPE_ADDRESS
-+++ jsr append_insert_type_on_line2
-+   rts
-
-append_insert_type_on_line2:
-    jsr insert_type_x2
-    lda insert_type_default_texts, x
-    sta text_ptr
-    lda insert_type_default_texts+1, X
-    sta text_ptr+1
-    jsr append_on_line_2
-    rts
-
-; ---------------- VECTORS ----------------
+; =============================================================================
+; Vectors
+; =============================================================================
 nmi: rti
 
 * = $FFFA
