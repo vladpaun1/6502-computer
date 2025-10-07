@@ -37,10 +37,25 @@ mode_texts:
     !word mode1_text, mode2_text, mode3_text
 
 
-mode1_text:   !text "cursor mode",0
-mode2_text:   !text "text mode",0
-mode3_text:   !text "insert mode",0
+mode1_text:   !text "c",0
+mode2_text:   !text "t",0
+mode3_text:   !text "i:",0
 
+
+; ---- insert types ----
+INSERT_TYPE_ADDRESS = $0201
+NUM_INSERT_TYPES = 3
+
+INSERT_TYPE_CHAR    = 0
+INSERT_TYPE_NUM     = 1
+INSERT_TYPE_SPECIAL = 2
+
+insert_type_default_texts:
+    !word insert_type1_default, insert_type2_default, insert_type3_default
+
+insert_type1_default:    !text "<char>:",0
+insert_type2_default:    !text "<num>:",0
+insert_type3_default:    !text "<special>:",0
 
 
 msg:    !text "Hello, world!",0
@@ -66,6 +81,9 @@ reset:
 
     lda #MODE_CURSOR
     sta MODE_ADDRESS
+
+    lda #INSERT_TYPE_CHAR
+    sta INSERT_TYPE_ADDRESS
 
     jsr show_current_mode_on_line2
 
@@ -273,6 +291,7 @@ left_m1:
     jmp irq_done
 
 left_m2:
+    jsr dec_insert_type
     jmp irq_done
 
 
@@ -302,6 +321,7 @@ right_m1:                   ; text mode: say "right"
     jmp irq_done
 
 right_m2:
+    jsr inc_insert_type
     jmp irq_done
 
 
@@ -364,6 +384,8 @@ down_m1:
     jmp irq_done
 
 down_m2:
+    lda 'a'
+    jsr print_char
     jmp irq_done
 
 ; --------- ENTER handlers ----------
@@ -395,6 +417,25 @@ enter_m2:
     jmp irq_done
 
 
+
+inc_insert_type:
+    inc INSERT_TYPE_ADDRESS
+    lda INSERT_TYPE_ADDRESS
+    cmp #NUM_INSERT_TYPES
+    bcc +
+    stz INSERT_TYPE_ADDRESS
++   jsr show_insert_type_on_line2
+    rts
+
+dec_insert_type:
+    dec INSERT_TYPE_ADDRESS
+    lda INSERT_TYPE_ADDRESS
+    cmp #$FF
+    bne +
+    lda #NUM_INSERT_TYPES - 1
+    sta INSERT_TYPE_ADDRESS
++   jsr show_insert_type_on_line2
+    rts
 
 toggle_modes:
     inc MODE_ADDRESS
@@ -444,6 +485,7 @@ lcd_clear_line2:
 
 print_on_line2:
     jsr lcd_clear_line2
+append_on_line_2:
     jsr print_msg
     rts
 
@@ -578,13 +620,46 @@ mode_x2:
     asl
     tax
     rts
+
+insert_type_x2:
+    ldx INSERT_TYPE_ADDRESS
+    txa 
+    asl
+    tax
+    rts
+
+reset_insert_type = $06
+
+show_insert_type_on_line2:
+    stz reset_insert_type
+    jmp ++
 show_current_mode_on_line2:
-    jsr mode_x2
+    lda #1
+    sta reset_insert_type
+
+++  jsr mode_x2
     lda mode_texts, x
     sta text_ptr
     lda mode_texts+1, X
     sta text_ptr+1
     jsr print_on_line2
+
+    lda MODE_ADDRESS
+    cmp #MODE_INSERT
+    bne +
+    lda reset_insert_type
+    beq +++
+    stz INSERT_TYPE_ADDRESS
++++ jsr append_insert_type_on_line2
++   rts
+
+append_insert_type_on_line2:
+    jsr insert_type_x2
+    lda insert_type_default_texts, x
+    sta text_ptr
+    lda insert_type_default_texts+1, X
+    sta text_ptr+1
+    jsr append_on_line_2
     rts
 
 ; ---------------- VECTORS ----------------
