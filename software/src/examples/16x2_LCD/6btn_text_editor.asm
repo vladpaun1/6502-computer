@@ -75,9 +75,9 @@ insert_type2_default:    !text "<num>:",0
 insert_type3_default:    !text "<special>:",0
 
 ; Special glyph set (wraps)
-SPECIAL_COUNT = 24
+SPECIAL_COUNT = 25
 special_table:
-    !byte '.',',','-','_','?','!',';',':','+','/','\\','*','(',')','[',']','{','}','<','>','=','@','#','&'
+    !byte ' ','.',',','-','_','?','!',';',':','+','/','\\','*','(',')','[',']','{','}','<','>','=','@','#','&'
 
 ; -----------------------------------------------------------------------------
 ; UI strings
@@ -525,7 +525,18 @@ set_default_insert_for_type:
 
 
 append_current_insert_on_line2:
+    lda #'<'
+    jsr print_char
+    
     lda CURRENT_INSERT
+    cmp #' '
+    bne +
+    lda #'s'
+    jsr print_char
+    lda #'p'
+
++   jsr print_char
+    lda #'>'
     jsr print_char
     rts
 
