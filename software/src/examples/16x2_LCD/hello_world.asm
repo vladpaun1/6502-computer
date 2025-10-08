@@ -7,10 +7,17 @@
 !addr PORTA   = $6001
 !addr DDRB    = $6002
 !addr DDRA    = $6003
+!addr PCR     = $600c
 
-ENABLE = %10000000
-RW = %01000000
-RS = %00100000
+RW = %10000000                  ; PA7
+RS = %01000000                  ; PA6
+
+; PCR/CB2 control (only bits 7..5 affect CB2). RMW to preserve other bits.
+CB2_HIGH_BITS = %11100000       ; CB2 = High output
+CB2_LOW_BITS  = %11000000       ; CB2 = Low output
+PRESERVE_MASK = %00011111       ; keep bits 4..0
+
+
 
 msg:    !text "Hello, world!",0
 
@@ -31,16 +38,15 @@ print_loop:
 loop:
     jmp loop
 
+; RS=1, RW=0
 print_char:
     jsr lcd_wait
-
+    pha
     sta PORTB
     lda #RS
     sta PORTA
-    lda #(RS | ENABLE)
-    sta PORTA
-    lda #RS
-    sta PORTA
+    jsr lcd_strobe
+    pla
     rts
 
 initialize_lcd:
@@ -62,36 +68,52 @@ initialize_lcd:
 
 lcd_instruction:
     jsr lcd_wait
-
     sta PORTB
-    lda #0
+    lda #$00
     sta PORTA
-    lda #ENABLE
-    sta PORTA
-    lda #0
-    sta PORTA
+    jsr lcd_strobe
     rts
 
+; Pulse E on CB2: HIGH then LOW (RMW preserve)
+lcd_strobe:
+    pha
+    lda PCR
+    and #PRESERVE_MASK
+    ora #CB2_HIGH_BITS
+    sta PCR
+    lda PCR
+    and #PRESERVE_MASK
+    ora #CB2_LOW_BITS
+    sta PCR
+    pla
+    rts
+
+
+; Busy-flag poll (read DB7 while E is HIGH)
 lcd_wait:
     pha
     lda #%00000000
-    sta DDRB
-
-lcd_busy:
-    lda #RW
+    sta DDRB                      ; PB inputs
+@busy:
+    lda #RW                       ; RS=0, RW=1
     sta PORTA
-    lda #(RW | ENABLE)
-    sta PORTA
-
+    ; E HIGH
+    lda PCR
+    and #PRESERVE_MASK
+    ora #CB2_HIGH_BITS
+    sta PCR
     lda PORTB
-    and #%10000000
-    bne lcd_busy
-
-    lda #RW
-    sta PORTA
-
+    pha
+    ; E LOW
+    lda PCR
+    and #PRESERVE_MASK
+    ora #CB2_LOW_BITS
+    sta PCR
+    pla
+    and #%10000000                ; DB7 busy?
+    bne @busy
     lda #%11111111
-    sta DDRB
+    sta DDRB                      ; PB outputs
     pla
     rts
 nmi: rti
