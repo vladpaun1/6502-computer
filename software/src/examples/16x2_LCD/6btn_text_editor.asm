@@ -49,15 +49,13 @@ CURRENT_SPECIAL_INDEX   = $0204  ; index into special_table
 ; -----------------------------------------------------------------------------
 ; Modes
 ; -----------------------------------------------------------------------------
-NUM_MODES   = 3
+NUM_MODES   = 2
 MODE_CURSOR = 0
-MODE_TEXT   = 1
-MODE_INSERT = 2
+MODE_INSERT = 1
 
 mode_texts:
-    !word mode1_text, mode2_text, mode3_text
-mode1_text:   !text "c",0
-mode2_text:   !text "t",0
+    !word mode1_text, mode3_text
+mode1_text:   !text "<cursor mode>",0
 mode3_text:   !text "i:",0
 
 ; -----------------------------------------------------------------------------
@@ -83,11 +81,7 @@ special_table:
 ; UI strings
 ; -----------------------------------------------------------------------------
 msg:    !text "Hello, world!",0
-left:   !text "left",0
-up:     !text "up",0
-down:   !text "down",0
-right:  !text "right",0
-enter:  !text "enter",0
+
 
 ; =============================================================================
 ; Reset / Init
@@ -185,7 +179,7 @@ reset_cursor:
 ; LEFT handlers
 ; =============================================================================
 left_handlers:
-    !word left_m0, left_m1, left_m2
+    !word left_m0, left_m1
 
 dispatch_left:
     jsr mode_x2
@@ -200,16 +194,8 @@ left_m0:                         ; cursor left
     jsr lcd_instruction
     jmp irq_done
 
-left_m1:                         ; text mode: say "left"
-    lda #<left
-    sta text_ptr
-    lda #>left
-    sta text_ptr+1
-    jsr print_on_line1
-    jsr reset_cursor
-    jmp irq_done
 
-left_m2:                         ; insert: prev type
+left_m1:                         ; insert: prev type
     jsr dec_insert_type
     jsr reset_cursor
     jmp irq_done
@@ -218,7 +204,7 @@ left_m2:                         ; insert: prev type
 ; RIGHT handlers
 ; =============================================================================
 right_handlers:
-    !word right_m0, right_m1, right_m2
+    !word right_m0, right_m1
 
 dispatch_right:
     jsr mode_x2
@@ -233,16 +219,8 @@ right_m0:                        ; cursor right
     jsr lcd_instruction
     jmp irq_done
 
-right_m1:                        ; text mode: say "right"
-    lda #<right
-    sta text_ptr
-    lda #>right
-    sta text_ptr+1
-    jsr print_on_line1
-    jsr reset_cursor
-    jmp irq_done
 
-right_m2:                        ; insert: next type
+right_m1:                        ; insert: next type
     jsr inc_insert_type
     jsr reset_cursor
     jmp irq_done
@@ -251,7 +229,7 @@ right_m2:                        ; insert: next type
 ; UP handlers
 ; =============================================================================
 up_handlers:
-    !word up_m0, up_m1, up_m2
+    !word up_m0, up_m1
 
 dispatch_up:
     jsr mode_x2
@@ -264,23 +242,9 @@ dispatch_up:
 up_m0:
     ; go to start of line
     jsr lcd_line1_home
-
-    ;jsr lcd_get_addr ; go to line 1, same col
-    ;and #%00001111
-    ;ora #%10000000
-    ;jsr lcd_instruction
     jmp irq_done
 
-up_m1:
-    lda #<up
-    sta text_ptr
-    lda #>up
-    sta text_ptr+1
-    jsr print_on_line1
-    jsr reset_cursor
-    jmp irq_done
-
-up_m2:                           ; insert: decrement glyph
+up_m1:                           ; insert: decrement glyph
     jsr dispatch_insert_dec
     jsr show_insert_type_on_line2
     jmp irq_done
@@ -289,7 +253,7 @@ up_m2:                           ; insert: decrement glyph
 ; DOWN handlers
 ; =============================================================================
 down_handlers:
-    !word down_m0, down_m1, down_m2
+    !word down_m0, down_m1
 
 dispatch_down:
     jsr mode_x2
@@ -303,23 +267,9 @@ down_m0:
     ; go to end of line 1
     lda #%10001111
     jsr lcd_instruction
-
-    ;jsr lcd_get_addr ; go to line 2, same col
-    ;and #%00001111
-    ;ora #%11000000
-    ;jsr lcd_instruction
     jmp irq_done
 
-down_m1:
-    lda #<down
-    sta text_ptr
-    lda #>down
-    sta text_ptr+1
-    jsr print_on_line1
-    jsr reset_cursor
-    jmp irq_done
-
-down_m2:                         ; insert: increment glyph
+down_m1:                         ; insert: increment glyph
     jsr dispatch_insert_inc
     jsr show_insert_type_on_line2
     jmp irq_done
@@ -328,7 +278,7 @@ down_m2:                         ; insert: increment glyph
 ; ENTER handlers
 ; =============================================================================
 enter_handlers:
-    !word enter_m0, enter_m1, enter_m2
+    !word enter_m0, enter_m1
 
 dispatch_enter:
     jsr mode_x2
@@ -342,15 +292,7 @@ enter_m0:                        ; backspace shift
     jsr lcd_backspace_shift
     jmp irq_done
 
-enter_m1:                        ; say "enter"
-    lda #<enter
-    sta text_ptr
-    lda #>enter
-    sta text_ptr+1
-    jsr print_on_line1
-    jmp irq_done
-
-enter_m2:                        ; insert at cursor (advance)
+enter_m1:                        ; insert at cursor (advance)
     jsr reset_cursor
     lda CURRENT_INSERT
     jsr print_char
