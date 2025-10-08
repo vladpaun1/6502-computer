@@ -190,7 +190,15 @@ dispatch_left:
     jmp (jmp_ptr)
 
 left_m0:                         ; cursor left
+    jsr lcd_get_addr
+    beq @wrap_eol2
+    
+
     lda #%00010000
+    jsr lcd_instruction
+    jmp irq_done
+@wrap_eol2:
+    lda #%10001111
     jsr lcd_instruction
     jmp irq_done
 
@@ -215,10 +223,18 @@ dispatch_right:
     jmp (jmp_ptr)
 
 right_m0:                        ; cursor right
+    jsr lcd_get_addr
+    cmp #%00001111
+    beq @wrap_sol1
+
     lda #%00010100
     jsr lcd_instruction
     jmp irq_done
 
+@wrap_sol1:
+    lda #%10000000
+    jsr lcd_instruction
+    jmp irq_done
 
 right_m1:                        ; insert: next type
     jsr inc_insert_type
