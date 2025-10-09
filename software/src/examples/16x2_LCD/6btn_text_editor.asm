@@ -216,9 +216,10 @@ left_m0:
 
     lda #CURSOR_LEFT                    ; CURSOR_LEFT
     jsr lcd_instruction
-    lda #SHIFT_DISP_RIGHT                    ; SHIFT_DISP_RIGHT
-    jsr lcd_instruction
+
     dec WIN_OFF
+    jsr shift_right_preserve_l2
+
     jmp irq_done
 
 @just_cursor_left:
@@ -238,9 +239,10 @@ left_m0:
     lda WIN_OFF
     cmp #24
     beq @done
-    lda #SHIFT_DISP_LEFT                    ; SHIFT_DISP_LEFT
-    jsr lcd_instruction
+
     inc WIN_OFF
+    jsr shift_left_preserve_l2
+
     jmp @scroll_left_to_last
 @done:
     jmp irq_done
@@ -286,9 +288,10 @@ right_m0:
 
     lda #CURSOR_RIGHT                   ; CURSOR_RIGHT
     jsr lcd_instruction
-    lda #SHIFT_DISP_LEFT           ; SHIFT_DISP_LEFT
-    jsr lcd_instruction
+
     inc WIN_OFF
+    jsr shift_left_preserve_l2
+
     jmp irq_done
 
 @just_cursor_right:
@@ -303,9 +306,10 @@ right_m0:
 @unscroll:
     lda WIN_OFF
     beq @done
-    lda #SHIFT_DISP_RIGHT                    ; SHIFT_DISP_RIGHT
-    jsr lcd_instruction
+
     dec WIN_OFF
+    jsr shift_right_preserve_l2
+
     bne @unscroll
 @done:
     jmp irq_done
@@ -414,9 +418,8 @@ enter_m1:
     cmp #24
     bcs @done               ; already fully scrolled → don't shift
 
-    lda #SHIFT_DISP_LEFT                ; SHIFT_DISP_LEFT
-    jsr lcd_instruction
     inc WIN_OFF
+    jsr shift_left_preserve_l2
 
 @done:
     jmp irq_done
@@ -469,8 +472,9 @@ lcd_line1_home:
     rts
 
 lcd_clear_line1:
-    jsr lcd_line1_home
-    ldy #16
+    lda #%10000000
+    jsr lcd_instruction
+    ldy #40
     lda #' '
 @cl1:
     jsr print_char
@@ -485,13 +489,15 @@ print_on_line1:
     rts
 
 lcd_line2_home:
-    lda #%11000000
+    lda WIN_OFF
+    ora #%11000000
     jsr lcd_instruction
     rts
 
 lcd_clear_line2:
-    jsr lcd_line2_home
-    ldy #16
+    lda #%11000000
+    jsr lcd_instruction
+    ldy #40
     lda #' '
 @cl2:
     jsr print_char
@@ -533,6 +539,8 @@ show_current_mode_on_line2:
     lda #1
     sta reset_insert_type
 show_mode_and_maybe_insert:
+    jsr lcd_clear_line2
+
     jsr mode_x2
     lda mode_texts, x
     sta text_ptr
@@ -947,6 +955,7 @@ lcd_read_data:
     pla
     rts
 
+
 ; Backspace with shift (line-local)
 lcd_backspace_shift:
     jsr lcd_get_addr
@@ -1009,6 +1018,48 @@ fill_last:
 
 finish_backspace:
     rts
+
+
+; ------- scratch for preserving visible line 2 -------
+LINE2_SCRATCH = $0216           ; 16 bytes: $0216..$0225
+
+
+; ---- one-step display shifts that preserve visible line 2 ----
+shift_left_preserve_l2:
+    lda LAST_CURSOR_POS
+    pha
+    jsr lcd_get_addr
+    sta LAST_CURSOR_POS
+
+
+    lda #SHIFT_DISP_LEFT
+    jsr lcd_instruction
+
+    jsr show_insert_type_on_line2
+
+    lda LAST_CURSOR_POS
+    jsr reset_cursor
+    pla
+    sta LAST_CURSOR_POS
+    rts
+
+shift_right_preserve_l2:
+    lda LAST_CURSOR_POS
+    pha
+    jsr lcd_get_addr
+    sta LAST_CURSOR_POS
+
+    lda #SHIFT_DISP_RIGHT
+    jsr lcd_instruction
+
+    jsr show_insert_type_on_line2
+
+    lda LAST_CURSOR_POS
+    jsr reset_cursor
+    pla
+    sta LAST_CURSOR_POS
+    rts
+
 
 ; =============================================================================
 ; VIA: CA1 IRQ setup
