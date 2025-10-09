@@ -28,6 +28,12 @@ CB2_HIGH_BITS = %11100000       ; CB2 = High output
 CB2_LOW_BITS  = %11000000       ; CB2 = Low output
 PRESERVE_MASK = %00011111       ; keep bits 4..0
 
+SHIFT_DISP_LEFT  = %00011000   ; shift display left, cursor follows visually
+SHIFT_DISP_RIGHT = %00011100   ; shift display right
+CURSOR_LEFT      = %00010000   ; what you already use
+CURSOR_RIGHT     = %00010100
+
+
 ; -----------------------------------------------------------------------------
 ; Zero-page working pointers/temps
 ; -----------------------------------------------------------------------------
@@ -45,6 +51,9 @@ INSERT_TYPE_ADDRESS     = $0201  ; current insert type (0..NUM_INSERT_TYPES-1)
 LAST_CURSOR_POS         = $0202  ; last DDRAM addr read (7-bit addr)
 CURRENT_INSERT          = $0203  ; current glyph to insert/edit
 CURRENT_SPECIAL_INDEX   = $0204  ; index into special_table
+
+WIN_OFF = $0205          ; 0..24 (because 40-16 = 24)
+
 
 ; -----------------------------------------------------------------------------
 ; Modes
@@ -105,6 +114,8 @@ reset:
 
     jsr lcd_get_addr    ; save cursor
     sta LAST_CURSOR_POS
+    stz WIN_OFF
+
 
 
     ; Initial editor state
@@ -191,17 +202,47 @@ dispatch_left:
     sta jmp_ptr+1
     jmp (jmp_ptr)
 
-left_m0:                         ; cursor left
-    jsr lcd_get_addr
-    beq @wrap_eol2
-    
+left_m0:
+    jsr lcd_get_addr            ; A = AC
+    beq @wrap_to_end            ; absolute start → wrap to end (see below)
 
-    lda #%00010000
+    ; at left edge? (AC == WIN_OFF)
+    cmp WIN_OFF
+    bne @just_cursor_left
+
+    ; left edge while scrolled? unscroll one step as we move left
+    lda WIN_OFF
+    beq @just_cursor_left       ; already at leftmost window
+
+    lda #CURSOR_LEFT                    ; CURSOR_LEFT
+    jsr lcd_instruction
+    lda #SHIFT_DISP_RIGHT                    ; SHIFT_DISP_RIGHT
+    jsr lcd_instruction
+    dec WIN_OFF
+    jmp irq_done
+
+@just_cursor_left:
+    lda #CURSOR_LEFT                    ; CURSOR_LEFT
     jsr lcd_instruction
     jmp irq_done
-@wrap_eol2:
-    lda #%10001111
+
+@wrap_to_end:
+    ; optional: wrap to logical end of the 40-char line and show its last window
+    ; AC := $27, WIN_OFF := 24, shift display left 24 times
+    lda #$27
+    ora #%10000000
     jsr lcd_instruction
+
+    ; scroll left until WIN_OFF == 24
+@scroll_left_to_last:
+    lda WIN_OFF
+    cmp #24
+    beq @done
+    lda #SHIFT_DISP_LEFT                    ; SHIFT_DISP_LEFT
+    jsr lcd_instruction
+    inc WIN_OFF
+    jmp @scroll_left_to_last
+@done:
     jmp irq_done
 
 
@@ -224,19 +265,51 @@ dispatch_right:
     sta jmp_ptr+1
     jmp (jmp_ptr)
 
-right_m0:                        ; cursor right
+; A = AC (0x00..0x27)
+right_m0:
     jsr lcd_get_addr
-    cmp #%00001111
-    beq @wrap_sol1
+    cmp #$27
+    beq @wrap_to_start          ; at absolute end → wrap & unscroll
 
-    lda #%00010100
+    ; at right edge? (AC == WIN_OFF + 15)
+    sta tmp                     ; tmp = AC
+    lda WIN_OFF
+    clc
+    adc #15
+    cmp tmp
+    bne @just_cursor_right
+
+    ; we're at right edge of the window
+    lda WIN_OFF
+    cmp #24
+    bcs @just_cursor_right      ; already fully scrolled → just move cursor
+
+    lda #CURSOR_RIGHT                   ; CURSOR_RIGHT
+    jsr lcd_instruction
+    lda #SHIFT_DISP_LEFT           ; SHIFT_DISP_LEFT
+    jsr lcd_instruction
+    inc WIN_OFF
+    jmp irq_done
+
+@just_cursor_right:
+    lda #$14                    ; CURSOR_RIGHT
     jsr lcd_instruction
     jmp irq_done
 
-@wrap_sol1:
+@wrap_to_start:
+    ; go to $00 and unscroll WIN_OFF steps
     lda #%10000000
     jsr lcd_instruction
+@unscroll:
+    lda WIN_OFF
+    beq @done
+    lda #SHIFT_DISP_RIGHT                    ; SHIFT_DISP_RIGHT
+    jsr lcd_instruction
+    dec WIN_OFF
+    bne @unscroll
+@done:
     jmp irq_done
+
 
 right_m1:                        ; insert: next type
     jsr inc_insert_type
@@ -310,11 +383,44 @@ enter_m0:                        ; backspace shift
     jsr lcd_backspace_shift
     jmp irq_done
 
-enter_m1:                        ; insert at cursor (advance)
-    jsr reset_cursor
+; enter_m1 — insert at cursor; scroll window if at right edge
+enter_m1:
+    ; 1) Check absolute end (AC == $27) BEFORE printing
+    jsr lcd_get_addr
+    cmp #$27
+    bne @not_last
+
+    ; --- At the very last cell: print and keep cursor there ---
+    lda CURRENT_INSERT
+    jsr print_char          ; AC would advance to next line; we don't want that
+    lda #CURSOR_LEFT                ; CURSOR_LEFT
+    jsr lcd_instruction     ; move back to $27 and stop
+    jmp irq_done
+
+@not_last:
+    ; 2) Snapshot old AC to test right-edge; then print (which advances AC)
+    sta tmp                 ; tmp := old AC
     lda CURRENT_INSERT
     jsr print_char
+
+    ; 3) If we were at the right edge (old AC == WIN_OFF+15) and can still scroll,
+    ;    shift window left once to keep the cursor visually at the edge.
+    lda WIN_OFF
+    clc
+    adc #15
+    cmp tmp
+    bne @done               ; not at right edge → nothing else
+    lda WIN_OFF
+    cmp #24
+    bcs @done               ; already fully scrolled → don't shift
+
+    lda #SHIFT_DISP_LEFT                ; SHIFT_DISP_LEFT
+    jsr lcd_instruction
+    inc WIN_OFF
+
+@done:
     jmp irq_done
+
 
 ; =============================================================================
 ; Insert type change
