@@ -962,9 +962,27 @@ lcd_backspace_shift:
     tax
     tay
 
+    ; --- Pre-roll window if we're at the left edge of the visible window ---
+    ; If (AC_low6 == WIN_OFF) and WIN_OFF > 0:
+    tya
+    and #%00111111           ; AC low 6 bits (0..39)
+    sta tmp                  ; tmp := current absolute column
+    lda WIN_OFF
+    clc
+    adc #1
+    cmp tmp
+    bne @no_preroll
+    lda WIN_OFF
+    beq @no_preroll          ; can't scroll further right
+    dec WIN_OFF              ; window start moves right -> WIN_OFF--
+    jsr shift_right_preserve_l2
+    
+@no_preroll:
+
+    ; ---- existing code below (recompute masks after our tmp usage) ----
     txa
     and #%01000000
-    sta tmp                      ; line bit (0x40)
+    sta tmp                  ; line bit (0x40)
 
     tya
     and #%00111111
@@ -1018,6 +1036,7 @@ fill_last:
 
 finish_backspace:
     rts
+
 
 
 ; ------- scratch for preserving visible line 2 -------
