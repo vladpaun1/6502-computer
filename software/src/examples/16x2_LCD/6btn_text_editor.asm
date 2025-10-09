@@ -967,20 +967,20 @@ lcd_backspace_shift:
     sta tmp                      ; line bit (0x40)
 
     tya
-    and #%00001111
+    and #%00111111
     tay
     beq finish_backspace
     dey
     tya
     tax
 copy_loop:
-    cpx #15
+    cpx #39
     bcs fill_last
 
     txa
     clc
     adc #1
-    and #%00001111
+    and #%00111111
     ora tmp
     ora #%10000000
     jsr lcd_instruction
@@ -989,7 +989,7 @@ copy_loop:
     pha
 
     txa
-    and #%00001111
+    and #%00111111
     ora tmp
     ora #%10000000
     jsr lcd_instruction
@@ -1001,8 +1001,8 @@ copy_loop:
     bra copy_loop
 
 fill_last:
-    lda #15
-    and #%00001111
+    lda #39
+    and #%00111111
     ora tmp
     ora #%10000000
     jsr lcd_instruction
@@ -1011,7 +1011,7 @@ fill_last:
     jsr print_char
 
     tya
-    and #%00001111
+    and #%00111111
     ora tmp
     ora #%10000000
     jsr lcd_instruction
