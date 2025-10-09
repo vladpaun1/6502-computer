@@ -61,16 +61,18 @@ mode3_text:   !text "i:",0
 ; -----------------------------------------------------------------------------
 ; Insert types
 ; -----------------------------------------------------------------------------
-NUM_INSERT_TYPES     = 3
+NUM_INSERT_TYPES     = 4
 INSERT_TYPE_CHAR     = 0
-INSERT_TYPE_NUM      = 1
-INSERT_TYPE_SPECIAL  = 2
+INSERT_TYPE_UPPER    = 1
+INSERT_TYPE_NUM      = 2
+INSERT_TYPE_SPECIAL  = 3
 
 insert_type_default_texts:
-    !word insert_type1_default, insert_type2_default, insert_type3_default
-insert_type1_default:    !text "<char>:",0
-insert_type2_default:    !text "<num>:",0
-insert_type3_default:    !text "<special>:",0
+    !word insert_type1_default, insert_type2_default, insert_type3_default, insert_type4_default
+insert_type1_default:    !text "<char_lo>:",0
+insert_type2_default:    !text "<char_up>:",0
+insert_type3_default:    !text "<num>:",0
+insert_type4_default:    !text "<special>:",0
 
 ; Special glyph set (wraps)
 SPECIAL_COUNT = 25
@@ -464,8 +466,14 @@ append_insert_type_on_line2:
 set_default_insert_for_type:
     lda INSERT_TYPE_ADDRESS
     cmp #INSERT_TYPE_CHAR
-    bne @chk_num
+    bne @chk_upper
     lda #'a'
+    sta CURRENT_INSERT
+    rts
+@chk_upper:
+    cmp #INSERT_TYPE_UPPER
+    bne @chk_num
+    lda #'A'
     sta CURRENT_INSERT
     rts
 @chk_num:
@@ -520,9 +528,9 @@ dispatch_insert_dec:
 
 ; Tables
 insert_inc_handlers:
-    !word insert_char_inc, insert_num_inc, insert_special_inc
+    !word insert_char_inc, insert_upper_inc, insert_num_inc, insert_special_inc
 insert_dec_handlers:
-    !word insert_char_dec, insert_num_dec, insert_special_dec
+    !word insert_char_dec, insert_upper_dec, insert_num_dec, insert_special_dec
 
 ; ---- CHAR: 'a'..'z' wrap ----
 insert_char_inc:
@@ -560,6 +568,45 @@ insert_char_dec:
 @store_dec:
     sta CURRENT_INSERT
     rts
+
+; ---- CHAR: 'A'..'Z' wrap ----
+insert_upper_inc:
+    lda CURRENT_INSERT
+    cmp #'A'
+    bcc @set_a
+    cmp #'Z'
+    beq @wrap_a
+    bcs @set_a
+    clc
+    adc #1
+    bne @store_char
+@wrap_a:
+    lda #'A'
+@set_a:
+@store_char:
+    sta CURRENT_INSERT
+    rts
+
+insert_upper_dec:
+    lda CURRENT_INSERT
+    cmp #'A'
+    beq @wrap_z
+    cmp #'Z'
+    bcc @ok_dec
+    beq @ok_dec
+    lda #'Z'
+    bne @store_dec
+@ok_dec:
+    sec
+    sbc #1
+    bcs @store_dec
+@wrap_z:
+    lda #'Z'
+@store_dec:
+    sta CURRENT_INSERT
+    rts
+
+
 
 ; ---- NUM: '0'..'9' wrap ----
 insert_num_inc:
