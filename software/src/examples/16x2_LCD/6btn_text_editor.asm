@@ -168,12 +168,14 @@ irq:
     and #%00000010
     beq irq_done                 ; not a CA1 IRQ
 
-    ; Latch cursor and clear CA1 flag by reading IRA
+    lda PORTA
+    and #BTN_MASK               ; keep PA5..PA0
+
+
     jsr lcd_get_addr
     sta LAST_CURSOR_POS
 
-    lda PORTA
-    and #%00111111               ; keep PA5..PA0
+    
 
     bit #BTN_MODE               ; PA0 = mode toggle
     beq irq_mode
@@ -253,8 +255,7 @@ left_m0:
 @wrap_to_end:
     ; optional: wrap to logical end of the 40-char line and show its last window
     ; AC := $27, WIN_OFF := 24, shift display left 24 times
-    lda #AC_LINE0_LAST
-    ora #CMD_SET_DDRAM
+    lda #CMD_SET_DDRAM | AC_LINE0_LAST
     jsr lcd_instruction
 
     ; scroll left until WIN_OFF == 24
@@ -318,13 +319,13 @@ right_m0:
     jmp irq_done
 
 @just_cursor_right:
-    lda #$14                    ; CURSOR_RIGHT
+    lda #CURSOR_RIGHT                    ; CURSOR_RIGHT
     jsr lcd_instruction
     jmp irq_done
 
 @wrap_to_start:
     ; go to $00 and unscroll WIN_OFF steps
-    lda #CMD_SET_DDRAM
+    lda #CMD_SET_DDRAM | AC_LINE0_BASE
     jsr lcd_instruction
 @unscroll:
     lda WIN_OFF
@@ -359,8 +360,7 @@ dispatch_up:
 
 up_m0:
     ; go to start of line
-    jsr lcd_line1_home
-    jmp irq_done
+    jmp wrap_to_start
 
 up_m1:                           ; insert: decrement glyph
     jsr dispatch_insert_dec
@@ -383,9 +383,7 @@ dispatch_down:
 
 down_m0:     
     ; go to end of line 1
-    lda #%10001111
-    jsr lcd_instruction
-    jmp irq_done
+    jmp @wrap_to_end
 
 down_m1:                         ; insert: increment glyph
     jsr dispatch_insert_inc
@@ -490,12 +488,12 @@ toggle_modes:
 ; UI line helpers
 ; =============================================================================
 lcd_line1_home:
-    lda #CMD_SET_DDRAM
+    lda #CMD_SET_DDRAM | AC_LINE0_BASE
     jsr lcd_instruction
     rts
 
 lcd_clear_line1:
-    lda #CMD_SET_DDRAM
+    lda #CMD_SET_DDRAM | AC_LINE0_BASE
     jsr lcd_instruction
     ldy #LCD_LINE_LEN
     lda #' '
@@ -513,7 +511,7 @@ print_on_line1:
 
 lcd_line2_home:
     lda WIN_OFF
-    ora #%11000000
+    ora #CMD_SET_DDRAM | AC_LINE1_BASE
     jsr lcd_instruction
     rts
 
