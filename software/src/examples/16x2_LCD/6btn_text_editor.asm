@@ -170,12 +170,12 @@ irq:
 
     lda PORTA
     and #BTN_MASK               ; keep PA5..PA0
-
+    sta tmp
 
     jsr lcd_get_addr
     sta LAST_CURSOR_POS
 
-    
+    lda tmp
 
     bit #BTN_MODE               ; PA0 = mode toggle
     beq irq_mode
@@ -253,22 +253,7 @@ left_m0:
     jmp irq_done
 
 @wrap_to_end:
-    ; optional: wrap to logical end of the 40-char line and show its last window
-    ; AC := $27, WIN_OFF := 24, shift display left 24 times
-    lda #CMD_SET_DDRAM | AC_LINE0_LAST
-    jsr lcd_instruction
-
-    ; scroll left until WIN_OFF == 24
-@scroll_left_to_last:
-    lda WIN_OFF
-    cmp #LCD_MAX_WINOFF
-    beq @done
-
-    inc WIN_OFF
-    jsr shift_left_preserve_l2
-
-    jmp @scroll_left_to_last
-@done:
+    jsr wrap_to_end_scroll
     jmp irq_done
 
 
@@ -325,17 +310,7 @@ right_m0:
 
 @wrap_to_start:
     ; go to $00 and unscroll WIN_OFF steps
-    lda #CMD_SET_DDRAM | AC_LINE0_BASE
-    jsr lcd_instruction
-@unscroll:
-    lda WIN_OFF
-    beq @done
-
-    dec WIN_OFF
-    jsr shift_right_preserve_l2
-
-    bne @unscroll
-@done:
+    jsr wrap_to_start_unscroll
     jmp irq_done
 
 
@@ -360,7 +335,8 @@ dispatch_up:
 
 up_m0:
     ; go to start of line
-    jmp wrap_to_start
+    jsr wrap_to_start_unscroll
+    jmp irq_done
 
 up_m1:                           ; insert: decrement glyph
     jsr dispatch_insert_dec
@@ -383,7 +359,8 @@ dispatch_down:
 
 down_m0:     
     ; go to end of line 1
-    jmp @wrap_to_end
+    jsr wrap_to_end_scroll
+    jmp irq_done
 
 down_m1:                         ; insert: increment glyph
     jsr dispatch_insert_inc
@@ -444,6 +421,39 @@ enter_m1:
 
 @done:
     jmp irq_done
+
+
+; =============================================================================
+; WRAP helpers (RTS-returning)
+; =============================================================================
+; Wrap to logical START of line and unscroll window back to WIN_OFF=0
+wrap_to_start_unscroll:
+    lda #CMD_SET_DDRAM | AC_LINE0_BASE
+    jsr lcd_instruction
+@unscroll:
+    lda WIN_OFF
+    beq @done
+    dec WIN_OFF
+    jsr shift_right_preserve_l2
+    jmp @unscroll
+@done:
+    rts
+
+; Wrap to logical END of the 40-char line and scroll window to last position
+; AC := $27, WIN_OFF := LCD_MAX_WINOFF
+wrap_to_end_scroll:
+    lda #CMD_SET_DDRAM | AC_LINE0_LAST
+    jsr lcd_instruction
+@scroll:
+    lda WIN_OFF
+    cmp #LCD_MAX_WINOFF
+    beq @done
+    inc WIN_OFF
+    jsr shift_left_preserve_l2
+    jmp @scroll
+@done:
+    rts
+
 
 
 ; =============================================================================
