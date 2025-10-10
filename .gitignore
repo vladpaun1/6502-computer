@@ -4,4 +4,5 @@ software/build
 *.bin
 *.hex
 __pycache__/
+.venv/
 .vscode/
