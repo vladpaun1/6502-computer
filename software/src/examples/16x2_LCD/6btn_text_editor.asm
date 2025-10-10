@@ -17,6 +17,29 @@
 !addr IFR     = $600d
 !addr IER     = $600e
 
+; --- Buttons (active-low) ---
+BTN_MODE  = %00000001  ; PA0
+BTN_LEFT  = %00000010  ; PA1
+BTN_UP    = %00000100  ; PA2
+BTN_DOWN  = %00001000  ; PA3
+BTN_RIGHT = %00010000  ; PA4
+BTN_ENTER = %00100000  ; PA5
+BTN_MASK  = %00111111
+
+; --- HD44780 geometry/opcodes
+
+LCD_COLS        = 16
+LCD_LINE_LEN    = 40
+LCD_LAST_COL    = 39
+LCD_MAX_WINOFF  = LCD_LINE_LEN - LCD_COLS  ; 24
+AC_LINE0_BASE   = %00000000
+AC_LINE1_BASE   = %01000000
+AC_LINE0_LAST   = %00100111                      ; 0..$27 = 0..39
+
+CMD_SET_DDRAM   = %10000000
+
+
+
 ; -----------------------------------------------------------------------------
 ; Port A mapping: PA7=RW, PA6=RS, PA5..PA0 = buttons
 ; -----------------------------------------------------------------------------
@@ -152,17 +175,17 @@ irq:
     lda PORTA
     and #%00111111               ; keep PA5..PA0
 
-    bit #%00000001               ; PA0 = mode toggle
+    bit #BTN_MODE               ; PA0 = mode toggle
     beq irq_mode
-    bit #%00000010
+    bit #BTN_LEFT
     beq irq_left
-    bit #%00000100
+    bit #BTN_UP
     beq irq_up
-    bit #%00001000
+    bit #BTN_DOWN
     beq irq_down
-    bit #%00010000
+    bit #BTN_RIGHT
     beq irq_right
-    bit #%00100000
+    bit #BTN_ENTER
     beq irq_enter
     jmp irq_done
 
@@ -184,7 +207,7 @@ irq_done:
 ; =============================================================================
 reset_cursor:
     lda LAST_CURSOR_POS
-    ora #%10000000               ; Set DDRAM addr command
+    ora #CMD_SET_DDRAM              ; Set DDRAM addr command
     jsr lcd_instruction
     rts
 
@@ -230,14 +253,14 @@ left_m0:
 @wrap_to_end:
     ; optional: wrap to logical end of the 40-char line and show its last window
     ; AC := $27, WIN_OFF := 24, shift display left 24 times
-    lda #$27
-    ora #%10000000
+    lda #AC_LINE0_LAST
+    ora #CMD_SET_DDRAM
     jsr lcd_instruction
 
     ; scroll left until WIN_OFF == 24
 @scroll_left_to_last:
     lda WIN_OFF
-    cmp #24
+    cmp #LCD_MAX_WINOFF
     beq @done
 
     inc WIN_OFF
@@ -270,7 +293,7 @@ dispatch_right:
 ; A = AC (0x00..0x27)
 right_m0:
     jsr lcd_get_addr
-    cmp #$27
+    cmp #AC_LINE0_LAST
     beq @wrap_to_start          ; at absolute end → wrap & unscroll
 
     ; at right edge? (AC == WIN_OFF + 15)
@@ -283,7 +306,7 @@ right_m0:
 
     ; we're at right edge of the window
     lda WIN_OFF
-    cmp #24
+    cmp #LCD_MAX_WINOFF
     bcs @just_cursor_right      ; already fully scrolled → just move cursor
 
     lda #CURSOR_RIGHT                   ; CURSOR_RIGHT
@@ -301,7 +324,7 @@ right_m0:
 
 @wrap_to_start:
     ; go to $00 and unscroll WIN_OFF steps
-    lda #%10000000
+    lda #CMD_SET_DDRAM
     jsr lcd_instruction
 @unscroll:
     lda WIN_OFF
@@ -391,7 +414,7 @@ enter_m0:                        ; backspace shift
 enter_m1:
     ; 1) Check absolute end (AC == $27) BEFORE printing
     jsr lcd_get_addr
-    cmp #$27
+    cmp #AC_LINE0_LAST
     bne @not_last
 
     ; --- At the very last cell: print and keep cursor there ---
@@ -415,7 +438,7 @@ enter_m1:
     cmp tmp
     bne @done               ; not at right edge → nothing else
     lda WIN_OFF
-    cmp #24
+    cmp #LCD_MAX_WINOFF
     bcs @done               ; already fully scrolled → don't shift
 
     inc WIN_OFF
@@ -467,14 +490,14 @@ toggle_modes:
 ; UI line helpers
 ; =============================================================================
 lcd_line1_home:
-    lda #%10000000
+    lda #CMD_SET_DDRAM
     jsr lcd_instruction
     rts
 
 lcd_clear_line1:
-    lda #%10000000
+    lda #CMD_SET_DDRAM
     jsr lcd_instruction
-    ldy #40
+    ldy #LCD_LINE_LEN
     lda #' '
 @cl1:
     jsr print_char
@@ -497,7 +520,7 @@ lcd_line2_home:
 lcd_clear_line2:
     lda #%11000000
     jsr lcd_instruction
-    ldy #40
+    ldy #LCD_LINE_LEN
     lda #' '
 @cl2:
     jsr print_char
@@ -992,7 +1015,7 @@ lcd_backspace_shift:
     tya
     tax
 copy_loop:
-    cpx #39
+    cpx #LCD_LAST_COL
     bcs fill_last
 
     txa
@@ -1000,7 +1023,7 @@ copy_loop:
     adc #1
     and #%00111111
     ora tmp
-    ora #%10000000
+    ora #CMD_SET_DDRAM
     jsr lcd_instruction
 
     jsr lcd_read_data
@@ -1009,7 +1032,7 @@ copy_loop:
     txa
     and #%00111111
     ora tmp
-    ora #%10000000
+    ora #CMD_SET_DDRAM
     jsr lcd_instruction
 
     pla
@@ -1019,10 +1042,10 @@ copy_loop:
     bra copy_loop
 
 fill_last:
-    lda #39
+    lda #LCD_LAST_COL
     and #%00111111
     ora tmp
-    ora #%10000000
+    ora #CMD_SET_DDRAM
     jsr lcd_instruction
 
     lda #' '
@@ -1031,7 +1054,7 @@ fill_last:
     tya
     and #%00111111
     ora tmp
-    ora #%10000000
+    ora #CMD_SET_DDRAM
     jsr lcd_instruction
 
 finish_backspace:
